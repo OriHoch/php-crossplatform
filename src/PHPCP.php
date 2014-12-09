@@ -44,13 +44,27 @@ class PHPCP {
         }
         return escapeshellarg($argument);
     }
-    
+
+    /**
+     * Execute an executable
+     * $opts array can contain the following keys (all are optional):
+     *  args = array of arguments (will be escaped and appended after the executable name)
+     *  env = array of key-value pairs of environment variable to set
+     *  passthru = if true - will show the output as it comes in (when passing this you can't get the output in the execResult)
+     * @param string $cmd the executable to run
+     * @param null|array $opts array of options
+     * @param null &$result parameter that will contain the execResult object
+     * @return bool returns true if command return value is 0
+     */
     public static function exec($cmd, $opts = null, &$result = null)
     {
         $result = new execResult();
         $opts = empty($opts) ? array() : $opts;
         if (array_key_exists('args', $opts)) {
             foreach ($opts['args'] as $arg) {
+                if (strlen($arg) != strlen(trim($arg))) {
+                    throw new execInvalidArgumentsException('arguements cannot start or end with spaces');
+                }
                 $cmd .= ' '.self::escapeShellArgument($arg);
             }
         }
@@ -64,15 +78,27 @@ class PHPCP {
                 $cmd = "{$k}=".escapeshellarg($v).' '.$cmd;
             }
         }
-        if (array_key_exists('passthru', $opts) && $opts['passthru']) {
-            passthru($cmd, $result->returnval);
-        } else {
-            exec($ncmd, $result->output, $result->returnval);
+        // look for special characters
+        $ok = true;
+        foreach (str_split($cmd) as $char) {
+            if (ord($char) < 32 || ord($char) > 126) {
+                $ok = false;
+                break;
+            }
         }
-        if ($result->returnval === 0) {
-            return true;
+        if (!$ok) {
+            throw new execInvalidArgumentsException('command contains invalid ascii character');
         } else {
-            return false;
+            if (array_key_exists('passthru', $opts) && $opts['passthru']) {
+                passthru($cmd, $result->returnval);
+            } else {
+                exec($cmd, $result->output, $result->returnval);
+            }
+            if ($result->returnval === 0) {
+                return true;
+            } else {
+                return false;
+            }
         }
     }
 
@@ -84,3 +110,7 @@ class execResult {
     public $returnval = null;
 
 };
+
+class execInvalidArgumentsException extends \Exception {
+
+}
